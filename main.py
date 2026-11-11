@@ -1,5 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
 import threading, queue, time, struct, sys, json, os, random
 
 try:
@@ -125,21 +126,21 @@ class Device:
 
 class App(tk.Tk):
     def __init__(self):
-        super().__init__(); self.title('485 从机模拟器'); self.geometry('1520x720'); self.minsize(950,600); self.configure(bg=BG); self.dev=Device(); self.events=queue.Queue(); self.config_file=os.path.join(os.path.dirname(os.path.abspath(__file__)),'registers.json'); self.configure_style(); self.build(); self.load_config(); self.after(200,self.refresh); self.protocol('WM_DELETE_WINDOW',self.close)
+        super().__init__(); self.title('485 从机模拟器'); self.geometry('1520x720'); self.minsize(950,600); self.configure(bg=BG); self.dev=Device(); self.events=queue.Queue(); self.base_dir=os.path.dirname(os.path.abspath(__file__)); self.config_file=os.path.join(self.base_dir,'registers.json'); self.tables_dir=os.path.join(self.base_dir,'point_tables'); self.current_table_path=None; self.current_table_name='未选择点表'; self.prepare_tables(); self.configure_style(); self.build(); self.load_config(); self.after(200,self.refresh); self.protocol('WM_DELETE_WINDOW',self.close)
     def configure_style(self):
         s=ttk.Style(self); s.theme_use('clam'); s.configure('.',background=BG,foreground=FG,fieldbackground=PANEL2,font=('Segoe UI',10)); s.configure('TFrame',background=BG); s.configure('Card.TFrame',background=PANEL); s.configure('TLabel',background=BG,foreground=FG); s.configure('Muted.TLabel',background=BG,foreground=MUTED); s.configure('Title.TLabel',background=BG,foreground=FG,font=('Segoe UI Semibold',20)); s.configure('TButton',background=PANEL2,foreground=FG,padding=(12,5),anchor='center'); s.map('TButton',background=[('active','#203855')]); s.configure('Accent.TButton',background='#0ea5e9',foreground='white',padding=(12,5),anchor='center'); s.configure('TCombobox',foreground=FG,fieldforeground=FG,background=PANEL2,arrowcolor=CYAN); s.map('TCombobox',fieldbackground=[('readonly',PANEL2)],foreground=[('readonly',FG)]); s.configure('Treeview',background=PANEL,fieldbackground=PANEL,foreground=FG,rowheight=30); s.configure('Treeview.Heading',background=PANEL2,foreground=CYAN)
     def build(self):
-        top=ttk.Frame(self); top.pack(fill='x',padx=24,pady=(20,10)); ttk.Label(top,text='485 从机模拟器',style='Title.TLabel').pack(side='left'); self.status=ttk.Label(top,text='● 已停止',foreground=RED); self.status.pack(side='right',pady=8)
+        top=ttk.Frame(self); top.pack(fill='x',padx=24,pady=(20,10)); ttk.Label(top,text='485 从机模拟器',style='Title.TLabel').pack(side='left'); self.current_label=ttk.Label(top,text='当前点表：未选择点表',foreground=CYAN); self.current_label.pack(side='right',padx=24,pady=8); self.status=ttk.Label(top,text='● 已停止',foreground=RED); self.status.pack(side='right',pady=8)
         bar=ttk.Frame(self); bar.pack(fill='x',padx=24,pady=6); self.vars={k:tk.StringVar(value=v) for k,v in {'port':'COM1','baud':'9600','parity':'无','stop':'1','data':'8','slave':'1'}.items()};
         for label,key,values in [('串口','port',None),('波特率','baud',['1200','2400','4800','9600','19200','38400','57600','115200']),('校验','parity',['无','奇','偶']),('停止位','stop',['1','2']),('数据位','data',['7','8']),('从机地址','slave',None)]:
             box=ttk.Frame(bar); box.pack(side='left',padx=(0,16)); ttk.Label(box,text=label,style='Muted.TLabel').pack(anchor='w'); w=(ttk.Entry(box,textvariable=self.vars[key],width=10) if key=='slave' else ttk.Combobox(box,textvariable=self.vars[key],values=values or [],width=10,state='normal' if not values else 'readonly')); w.pack(pady=(4,0));
             if key=='port': self.portbox=w
-        ttk.Button(bar,text='刷新串口',command=self.ports).pack(side='left',padx=4,pady=18); self.resetbtn=ttk.Button(bar,text='重置寄存器值',command=self.reset_registers); self.resetbtn.pack(side='right',padx=(8,0),pady=18); self.loopbtn=ttk.Button(bar,text='本地回环测试',command=self.loop_test,state='disabled'); self.loopbtn.pack(side='right',padx=(8,0),pady=18); self.configbtn=ttk.Button(bar,text='配置寄存器',command=self.edit); self.configbtn.pack(side='right',pady=18); self.startbtn=ttk.Button(bar,text='▶  启动模拟',style='Accent.TButton',command=self.toggle); self.startbtn.pack(side='right',padx=8,pady=18)
+        ttk.Button(bar,text='刷新串口',command=self.ports).pack(side='left',padx=4,pady=18); self.resetbtn=ttk.Button(bar,text='重置寄存器值',command=self.reset_registers); self.resetbtn.pack(side='right',padx=(8,0),pady=18); self.loopbtn=ttk.Button(bar,text='本地回环测试',command=self.loop_test,state='disabled'); self.loopbtn.pack(side='right',padx=(8,0),pady=18); self.tablebtn=ttk.Button(bar,text='选择从机点表',command=self.select_table); self.tablebtn.pack(side='right',pady=18); self.configbtn=self.tablebtn; self.startbtn=ttk.Button(bar,text='▶  启动模拟',style='Accent.TButton',command=self.toggle); self.startbtn.pack(side='right',padx=8,pady=18)
         body=ttk.Frame(self); body.pack(fill='both',expand=True,padx=24,pady=10); left=ttk.Frame(body,style='Card.TFrame'); left.pack(side='left',fill='both',expand=True); ttk.Label(left,text='寄存器总览',font=('Segoe UI Semibold',13),background=PANEL,foreground=FG).pack(anchor='w',padx=16,pady=14); cols=('number','label','type','addr','mapping','length','value','default'); self.tree=ttk.Treeview(left,columns=cols,show='headings'); [self.tree.heading(c,text=t) for c,t in zip(cols,['编号','标签','类型','地址','映射地址','寄存器长度','当前值','默认值'])]; [self.tree.column(c,width=w,anchor='center') for c,w in zip(cols,[70,150,110,85,100,100,110,110])]; self.tree.pack(fill='both',expand=True,padx=12,pady=(0,12)); right=ttk.Frame(body,style='Card.TFrame',width=500); right.pack(side='right',fill='y',padx=(16,0)); right.pack_propagate(False); ttk.Label(right,text='运行日志',font=('Segoe UI Semibold',13),background=PANEL,foreground=FG).pack(anchor='w',padx=16,pady=14); self.logbox=tk.Text(right,bg=PANEL,fg=MUTED,insertbackground=FG,relief='flat',state='disabled',wrap='word'); self.logbox.pack(fill='both',expand=True,padx=12,pady=(0,12))
     def ports(self):
         if list_ports: self.portbox['values']=[p.device for p in list_ports.comports()]
-    def edit(self):
-        win=tk.Toplevel(self); win.title('配置寄存器列表'); win.geometry('1000x800'); win.configure(bg=BG); win.transient(self); win.grab_set(); frame=ttk.Frame(win); frame.pack(fill='both',expand=True,padx=18,pady=18); ttk.Label(frame,text='寄存器列表（双击一行可编辑）',style='Title.TLabel').pack(anchor='w',pady=(0,12)); cols=('number','label','type','address','mapping','length','default'); tree=ttk.Treeview(frame,columns=cols,show='headings',height=15); [tree.heading(c,text=t) for c,t in zip(cols,['编号','标签','类型','地址','映射地址','寄存器长度','默认值'])]; [tree.column(c,width=w,anchor='center') for c,w in zip(cols,[70,180,150,120,120,120,140])]; tree.pack(fill='both',expand=True); items=sorted(self.dev.snapshot(),key=lambda z:(z['kind'],z['address'])); [tree.insert('', 'end', values=(i,x.get('label',''),x['kind'],x['address'],x.get('mapping',x['address']),x.get('length',1),','.join(map(str,x['default'])) if isinstance(x.get('default'),list) else x['default'])) for i,x in enumerate(items,1)]
+    def edit(self, initial_items=None, on_saved=None):
+        win=tk.Toplevel(self); win.title('配置寄存器列表'); win.geometry('1000x800'); win.configure(bg=BG); win.transient(self); win.grab_set(); frame=ttk.Frame(win); frame.pack(fill='both',expand=True,padx=18,pady=18); ttk.Label(frame,text='寄存器列表（双击一行可编辑）',style='Title.TLabel').pack(anchor='w',pady=(0,12)); cols=('number','label','type','address','mapping','length','default'); tree=ttk.Treeview(frame,columns=cols,show='headings',height=15); [tree.heading(c,text=t) for c,t in zip(cols,['编号','标签','类型','地址','映射地址','寄存器长度','默认值'])]; [tree.column(c,width=w,anchor='center') for c,w in zip(cols,[70,180,150,120,120,120,140])]; tree.pack(fill='both',expand=True); items=sorted(initial_items if initial_items is not None else self.dev.snapshot(),key=lambda z:(z['kind'],z['address'])); [tree.insert('', 'end', values=(i,x.get('label',''),x['kind'],x['address'],x.get('mapping',x['address']),x.get('length',1),','.join(map(str,x['default'])) if isinstance(x.get('default'),list) else x['default'])) for i,x in enumerate(items,1)]
         def edit_row(event=None):
             selected=tree.selection()
             if not selected: return
@@ -192,25 +193,69 @@ class App(tk.Tk):
                 try: defaults=[int(x.strip()) for x in str(v).split(',')]; assert len(defaults)==int(l) and all(0<=x<=65535 for x in defaults)
                 except: messagebox.showerror('默认值错误','默认值数量必须等于寄存器长度，每个值范围为0-65535。',parent=win); return
                 seen.add(key); out.append({'kind':k,'address':int(a),'mapping':int(m),'length':int(l),'value':defaults.copy(),'default':defaults,'label':str(text)})
-            self.dev.set_items(out); self.save_config(); self.refresh_tree(); win.destroy()
+            if on_saved: on_saved(out)
+            else: self.dev.set_items(out); self.save_config(); self.refresh_tree()
+            win.destroy()
         ttk.Button(frame,text='保存配置',style='Accent.TButton',command=save).pack(side='right')
     def refresh_tree(self):
         for i in self.tree.get_children(): self.tree.delete(i)
         for number,x in enumerate(sorted(self.dev.snapshot(),key=lambda z:(z['kind'],z['address'])),1): self.tree.insert('','end',values=(number,x.get('label',''),x['kind'],x['address'],x.get('mapping',x['address']),x.get('length',1),','.join(map(str,x['value'])) if isinstance(x.get('value'),list) else x['value'],','.join(map(str,x['default'])) if isinstance(x.get('default'),list) else x['default']))
+    def prepare_tables(self):
+        os.makedirs(self.tables_dir,exist_ok=True)
+        if not any(name.lower().endswith('.json') for name in os.listdir(self.tables_dir)) and os.path.exists(self.config_file):
+            try:
+                with open(self.config_file,'r',encoding='utf-8') as f: data=json.load(f)
+                with open(os.path.join(self.tables_dir,'默认点表.json'),'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2)
+            except Exception: pass
+    def table_files(self):
+        return sorted([os.path.join(self.tables_dir,n) for n in os.listdir(self.tables_dir) if n.lower().endswith('.json')])
+    def normalize_items(self, items):
+        for x in items:
+            x.setdefault('label',''); x.setdefault('mapping',x.get('address',0)); x.setdefault('length',1)
+            if not isinstance(x.get('default'),list): x['default']=[x.get('default',0)]*int(x['length'])
+            if not isinstance(x.get('value'),list): x['value']=[x.get('value',x['default'][0])]*int(x['length'])
+        return items
+    def select_table(self):
+        win=tk.Toplevel(self); win.title('选择从机点表'); win.geometry('620x430'); win.configure(bg=BG); win.transient(self); win.grab_set(); frame=ttk.Frame(win); frame.pack(fill='both',expand=True,padx=18,pady=18); ttk.Label(frame,text='本地从机点表',style='Title.TLabel').pack(anchor='w',pady=(0,12)); table_list=tk.Listbox(frame,bg=PANEL,fg=FG,selectbackground='#2563eb',selectforeground='white',font=('Segoe UI',11),relief='flat',height=12); table_list.pack(fill='both',expand=True)
+        paths=self.table_files(); names=[os.path.splitext(os.path.basename(p))[0] for p in paths]; [table_list.insert('end',n) for n in names]
+        def edit_path(path):
+            try:
+                with open(path,'r',encoding='utf-8') as f: data=json.load(f)
+            except Exception as e: messagebox.showerror('点表读取失败',str(e),parent=win); return
+            data=self.normalize_items(data)
+            def saved(items):
+                with open(path,'w',encoding='utf-8') as f: json.dump(items,f,ensure_ascii=False,indent=2)
+                win.destroy(); self.select_table()
+            self.edit(data,saved)
+        def new_table():
+            name=simpledialog.askstring('新建点表','请输入点表名称：',parent=win)
+            if not name: return
+            safe=''.join(c for c in name.strip() if c not in '\\/:*?"<>|')
+            if not safe: return
+            path=os.path.join(self.tables_dir,safe+'.json')
+            if os.path.exists(path): messagebox.showerror('名称重复','该点表名称已经存在。',parent=win); return
+            with open(path,'w',encoding='utf-8') as f: json.dump([],f,ensure_ascii=False,indent=2)
+            edit_path(path)
+        def selected_path():
+            selected=table_list.curselection(); return paths[selected[0]] if selected else None
+        def edit_selected():
+            path=selected_path()
+            if path: edit_path(path)
+        def choose():
+            path=selected_path()
+            if not path: messagebox.showwarning('请选择点表','请先选择一个本地点表。',parent=win); return
+            try:
+                with open(path,'r',encoding='utf-8') as f: data=json.load(f)
+                self.dev.set_items(self.normalize_items(data)); self.current_table_path=path; self.current_table_name=os.path.splitext(os.path.basename(path))[0]; self.current_label.configure(text='当前点表：'+self.current_table_name); self.refresh_tree(); win.destroy()
+            except Exception as e: messagebox.showerror('点表加载失败',str(e),parent=win)
+        controls=ttk.Frame(frame); controls.pack(fill='x',pady=(12,0)); ttk.Button(controls,text='新建点表',command=new_table).pack(side='left'); ttk.Button(controls,text='编辑选中',command=edit_selected).pack(side='left',padx=8); ttk.Button(controls,text='确定',style='Accent.TButton',command=choose).pack(side='right')
     def save_config(self):
+        if not self.current_table_path: return
         try:
-            with open(self.config_file,'w',encoding='utf-8') as f: json.dump(self.dev.snapshot(),f,ensure_ascii=False,indent=2)
+            with open(self.current_table_path,'w',encoding='utf-8') as f: json.dump(self.dev.snapshot(),f,ensure_ascii=False,indent=2)
         except Exception as e: self.log('配置保存失败: '+str(e))
     def load_config(self):
-        try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file,'r',encoding='utf-8') as f: loaded=json.load(f)
-                for x in loaded:
-                    x.setdefault('label',''); x.setdefault('mapping',x.get('address',0)); x.setdefault('length',1)
-                    if not isinstance(x.get('default'),list): x['default']=[x.get('default',0)]*int(x['length'])
-                    if not isinstance(x.get('value'),list): x['value']=[x.get('value',x['default'][0])]*int(x['length'])
-                self.dev.set_items(loaded)
-        except Exception as e: self.log('配置加载失败: '+str(e))
+        self.dev.set_items([]); self.current_table_path=None; self.current_table_name='未选择点表'; self.current_label.configure(text='当前点表：未选择点表')
         self.refresh_tree()
     def log(self,msg): self.events.put(msg)
     def refresh(self):

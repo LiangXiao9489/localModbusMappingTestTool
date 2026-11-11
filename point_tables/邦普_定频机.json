@@ -1,0 +1,15 @@
+[
+  {
+    "kind": "保持寄存器",
+    "address": 0,
+    "mapping": 0,
+    "length": 1,
+    "value": [
+      0
+    ],
+    "default": [
+      0
+    ],
+    "label": ""
+  }
+]
