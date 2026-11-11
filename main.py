@@ -139,7 +139,8 @@ class App(tk.Tk):
         body=ttk.Frame(self); body.pack(fill='both',expand=True,padx=24,pady=10); left=ttk.Frame(body,style='Card.TFrame'); left.pack(side='left',fill='both',expand=True); ttk.Label(left,text='寄存器总览',font=('Segoe UI Semibold',13),background=PANEL,foreground=FG).pack(anchor='w',padx=16,pady=14); cols=('number','label','type','addr','mapping','length','value','default'); self.tree=ttk.Treeview(left,columns=cols,show='headings'); [self.tree.heading(c,text=t) for c,t in zip(cols,['编号','标签','类型','地址','映射地址','寄存器长度','当前值','默认值'])]; [self.tree.column(c,width=w,anchor='center') for c,w in zip(cols,[70,150,110,85,100,100,110,110])]; self.tree.pack(fill='both',expand=True,padx=12,pady=(0,12)); right=ttk.Frame(body,style='Card.TFrame',width=500); right.pack(side='right',fill='y',padx=(16,0)); right.pack_propagate(False); ttk.Label(right,text='运行日志',font=('Segoe UI Semibold',13),background=PANEL,foreground=FG).pack(anchor='w',padx=16,pady=14); self.logbox=tk.Text(right,bg=PANEL,fg=MUTED,insertbackground=FG,relief='flat',state='disabled',wrap='word'); self.logbox.pack(fill='both',expand=True,padx=12,pady=(0,12))
     def ports(self):
         if list_ports: self.portbox['values']=[p.device for p in list_ports.comports()]
-    def edit(self, initial_items=None, on_saved=None):
+    def edit(self, initial_items=None, on_saved=None, table_path=None):
+        table_path_holder = table_path if isinstance(table_path,list) else [table_path]
         win=tk.Toplevel(self); win.title('配置寄存器列表'); win.geometry('1000x800'); win.configure(bg=BG); win.transient(self); win.grab_set(); frame=ttk.Frame(win); frame.pack(fill='both',expand=True,padx=18,pady=18); ttk.Label(frame,text='寄存器列表（双击一行可编辑）',style='Title.TLabel').pack(anchor='w',pady=(0,12)); cols=('number','label','type','address','mapping','length','default'); tree=ttk.Treeview(frame,columns=cols,show='headings',height=15); [tree.heading(c,text=t) for c,t in zip(cols,['编号','标签','类型','地址','映射地址','寄存器长度','默认值'])]; [tree.column(c,width=w,anchor='center') for c,w in zip(cols,[70,180,150,120,120,120,140])]; tree.pack(fill='both',expand=True); items=sorted(initial_items if initial_items is not None else self.dev.snapshot(),key=lambda z:(z['kind'],z['address'])); [tree.insert('', 'end', values=(i,x.get('label',''),x['kind'],x['address'],x.get('mapping',x['address']),x.get('length',1),','.join(map(str,x['default'])) if isinstance(x.get('default'),list) else x['default'])) for i,x in enumerate(items,1)]
         def edit_row(event=None):
             selected=tree.selection()
@@ -196,7 +197,21 @@ class App(tk.Tk):
             if on_saved: on_saved(out)
             else: self.dev.set_items(out); self.save_config(); self.refresh_tree()
             win.destroy()
-        ttk.Button(frame,text='保存配置',style='Accent.TButton',command=save).pack(side='right')
+        bottom=ttk.Frame(frame); bottom.pack(fill='x',pady=(8,0))
+        if table_path:
+            def rename_table():
+                old_name=os.path.splitext(os.path.basename(table_path_holder[0]))[0]; new_name=simpledialog.askstring('修改点表名称','请输入新的点表名称：',initialvalue=old_name,parent=win)
+                if not new_name: return
+                safe=''.join(c for c in new_name.strip() if c not in '\\/:*?"<>|')
+                new_path=os.path.join(self.tables_dir,safe+'.json') if safe else None
+                if not new_path: messagebox.showerror('名称错误','点表名称不能为空。',parent=win); return
+                if new_path != table_path_holder[0] and os.path.exists(new_path): messagebox.showerror('名称重复','该点表名称已经存在。',parent=win); return
+                if new_path != table_path_holder[0]:
+                    try: os.rename(table_path_holder[0],new_path)
+                    except Exception as e: messagebox.showerror('重命名失败',str(e),parent=win); return
+                table_path_holder[0]=new_path; win.title('编辑点表：'+safe); messagebox.showinfo('重命名成功','点表名称已修改。',parent=win)
+            ttk.Button(bottom,text='修改点表名称',command=rename_table).pack(side='left')
+        ttk.Button(bottom,text='保存配置',style='Accent.TButton',command=save).pack(side='right')
     def refresh_tree(self):
         for i in self.tree.get_children(): self.tree.delete(i)
         for number,x in enumerate(sorted(self.dev.snapshot(),key=lambda z:(z['kind'],z['address'])),1): self.tree.insert('','end',values=(number,x.get('label',''),x['kind'],x['address'],x.get('mapping',x['address']),x.get('length',1),','.join(map(str,x['value'])) if isinstance(x.get('value'),list) else x['value'],','.join(map(str,x['default'])) if isinstance(x.get('default'),list) else x['default']))
@@ -223,10 +238,11 @@ class App(tk.Tk):
                 with open(path,'r',encoding='utf-8') as f: data=json.load(f)
             except Exception as e: messagebox.showerror('点表读取失败',str(e),parent=win); return
             data=self.normalize_items(data)
+            path_holder=[path]
             def saved(items):
-                with open(path,'w',encoding='utf-8') as f: json.dump(items,f,ensure_ascii=False,indent=2)
+                with open(path_holder[0],'w',encoding='utf-8') as f: json.dump(items,f,ensure_ascii=False,indent=2)
                 win.destroy(); self.select_table()
-            self.edit(data,saved)
+            self.edit(data,saved,path_holder)
         def new_table():
             name=simpledialog.askstring('新建点表','请输入点表名称：',parent=win)
             if not name: return
