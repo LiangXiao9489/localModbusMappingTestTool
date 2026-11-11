@@ -455,13 +455,18 @@ class App(tk.Tk):
         right = ttk.Frame(body, style="Card.TFrame", width=500)
         right.pack(side="right", fill="y", padx=(16, 0))
         right.pack_propagate(False)
+        log_header = ttk.Frame(right, style="Card.TFrame")
+        log_header.pack(fill="x", padx=12, pady=(10, 4))
         ttk.Label(
-            right,
+            log_header,
             text="运行日志",
             font=("Segoe UI Semibold", 13),
             background=PANEL,
             foreground=FG,
-        ).pack(anchor="w", padx=16, pady=14)
+        ).pack(side="left", padx=4, pady=4)
+        ttk.Button(log_header, text="一键清屏", command=self.clear_main_log).pack(
+            side="right", padx=4, pady=2
+        )
         self.logbox = tk.Text(
             right,
             bg=PANEL,
@@ -476,6 +481,11 @@ class App(tk.Tk):
     def ports(self):
         if list_ports:
             self.portbox["values"] = [p.device for p in list_ports.comports()]
+
+    def clear_main_log(self):
+        self.logbox.configure(state="normal")
+        self.logbox.delete("1.0", "end")
+        self.logbox.configure(state="disabled")
 
     def edit(self, initial_items=None, on_saved=None, table_path=None):
         table_path_holder = table_path if isinstance(table_path, list) else [table_path]
@@ -1211,6 +1221,15 @@ class App(tk.Tk):
             )
             for v in (total, success, rate)
         ]
+        test_log_header = ttk.Frame(win, style="Card.TFrame")
+        test_log_header.pack(fill="x", padx=18, pady=(0, 4))
+        ttk.Label(
+            test_log_header,
+            text="测试日志",
+            font=("Segoe UI Semibold", 11),
+            background=PANEL,
+            foreground=FG,
+        ).pack(side="left", padx=8, pady=4)
         logbox = tk.Text(
             win,
             bg=PANEL,
@@ -1221,6 +1240,15 @@ class App(tk.Tk):
             wrap="word",
         )
         logbox.pack(fill="both", expand=True, padx=18, pady=(0, 10))
+
+        def clear_test_log():
+            logbox.configure(state="normal")
+            logbox.delete("1.0", "end")
+            logbox.configure(state="disabled")
+
+        ttk.Button(test_log_header, text="一键清屏", command=clear_test_log).pack(
+            side="right", padx=8, pady=2
+        )
         controls = ttk.Frame(win)
         controls.pack(fill="x", padx=18, pady=(0, 16))
         running = {"value": False}
