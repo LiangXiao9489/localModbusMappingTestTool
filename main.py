@@ -402,7 +402,11 @@ class App(tk.Tk):
         self.tablebtn.pack(side="right", pady=18)
         self.configbtn = self.tablebtn
         self.startbtn = ttk.Button(
-            bar, text="▶  启动模拟", style="Accent.TButton", command=self.toggle
+            bar,
+            text="▶  启动模拟",
+            style="Accent.TButton",
+            command=self.toggle,
+            state="disabled",
         )
         self.startbtn.pack(side="right", padx=8, pady=18)
         body = ttk.Frame(self)
@@ -979,6 +983,7 @@ class App(tk.Tk):
                     text="当前点表：" + self.current_table_name
                 )
                 self.refresh_tree()
+                self.startbtn.state(["!disabled"])
                 win.destroy()
             except Exception as e:
                 messagebox.showerror("点表加载失败", str(e), parent=win)
@@ -1031,6 +1036,11 @@ class App(tk.Tk):
             self.resetbtn.state(["!disabled"])
             self.loopbtn.state(["disabled"])
             self.log("模拟已停止")
+            return
+        if not self.current_table_path:
+            messagebox.showwarning(
+                "未选择点表", "请先选择一个从机点表，再启动模拟。", parent=self
+            )
             return
         try:
             parity = {"无": "N", "奇": "O", "偶": "E"}[self.vars["parity"].get()]
