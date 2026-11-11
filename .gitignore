@@ -1,0 +1,8 @@
+# 本地点表文件，不提交到 Git
+point_table/
+point_tables/
+
+# Python 缓存文件
+__pycache__/
+**/__pycache__/
+*.py[cod]
